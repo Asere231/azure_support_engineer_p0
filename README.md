@@ -151,13 +151,5 @@ All Azure deployments are strictly configured to avoid charges:
 
 ## Extension Features
 
-- [x] Interactive CLI Menu
-- [x] Persistent Performance History (local JSON)
-- [ ] Azure Blob Storage for remote history
-- [ ] Slack/Discord webhook notifications on deploy success/failure
-
----
-
-## Author
-
-Bryan — SRE Training Cohort, 2406
+- Interactive CLI Menu
+- Persistent Performance History (local JSON)
