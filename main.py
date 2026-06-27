@@ -5,17 +5,16 @@ import azure_cli
 
 
 def interactive_cli():
-    print("=" * 30)
-    print(" " * 5 + "SRE Diagnostic Tool")
-    print("=" * 30)
-    
-    print("1. Run Local Diagnostics")
-    print("2. Deploy Azure VM")
-    print("3. Run Teardown")
-    print("4. View Performance History")
-    print("5. Exit")
-    
     while True:
+        print("=" * 30)
+        print(" " * 5 + "SRE Diagnostic Tool")
+        print("=" * 30)
+        
+        print("1. Run Local Diagnostics")
+        print("2. Deploy Azure VM")
+        print("3. Run Teardown")
+        print("4. View Performance History")
+        print("5. Exit")
         selection = input("Select an option: ")
         match selection:
             case "1": 

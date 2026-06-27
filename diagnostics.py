@@ -1,4 +1,5 @@
 import subprocess
+import re
 
 """
 ps -> current processes running
@@ -10,7 +11,7 @@ ss -> shows ports that are listening and the processes
 
 
 def run_local_diagnostic():
-    # no metrics needed, display top 5 based on cpu usage
+    # one metrics needed for cpu health, then, display top 5 based on cpu usage
     current_processes = get_current_processes()
 
     current_memory_usage = get_memory_usage()
@@ -19,6 +20,12 @@ def run_local_diagnostic():
 
     # No metrics needed, display udp, tcp ports and external listening if needed
     current_networking_snapshot = get_networking_snapshot()
+
+    diagnostic = diagnose(current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot)
+
+    print_summary(diagnostic)
+    print_detailed(current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot)
+
     
 
 def get_current_processes():
@@ -34,16 +41,24 @@ def get_current_processes():
     for line in processes_lines[1:7]:
         columns = line.split()
         user = columns[0]
-        pid = columns[1]
-        cpu_percentage = columns[2]
-        memory_percentage = columns[3]
+        pid = int(columns[1])
+        cpu_percentage = float(columns[2])
+        health = ""
+        if cpu_percentage >= 80.0:
+            health = "Critical"
+        elif cpu_percentage < 80.0 and cpu_percentage > 50.0:
+            health = "Watch"
+        else:
+            health = "Healthy"
+        memory_percentage = float(columns[3])
         process_running = columns[10]
         process = {
             "user": user,
             "pid": pid,
             "cpu_percentage": cpu_percentage,
             "memory_percentage": memory_percentage,
-            "process_running": process_running
+            "process_running": process_running,
+            "health": health
         }
         processes_formatted.append(process)
 
@@ -57,13 +72,13 @@ def get_memory_usage():
     current_memory_usage = subprocess.run(["free", "-h"], capture_output=True, text=True)
     memory_usage_lines = current_memory_usage.stdout.splitlines()
     ram_columns = memory_usage_lines[1].split()
-    ram_total_memory = ram_columns[1]
-    ram_used_memory = ram_columns[2]
-    ram_free_memory = ram_columns[3]
+    ram_total_memory = float(re.sub("[A-Za-z]", "", ram_columns[1]))
+    ram_used_memory = float(re.sub("[A-Za-z]", "", ram_columns[2]))
+    ram_free_memory = float(re.sub("[A-Za-z]", "", ram_columns[3]))
     swap_columns = memory_usage_lines[2].split()
-    swap_total_memory = swap_columns[1]
-    swap_used_memory = swap_columns[2]
-    swap_free_memory = swap_columns[3]
+    swap_total_memory = float(re.sub("[A-Za-z]", "", swap_columns[1]))
+    swap_used_memory = float(re.sub("[A-Za-z]", "", swap_columns[2]))
+    swap_free_memory = float(re.sub("[A-Za-z]", "", swap_columns[3]))
     memory_usage = {
         "RAM": {
             "ram_total_memory": ram_total_memory,
@@ -87,10 +102,10 @@ def get_storage_usage():
     disk_usage_line = current_disk_usage.stdout.splitlines()
     disk_usage_column = disk_usage_line[1].split()
     filesystem_disk = disk_usage_column[0]
-    total_disk = disk_usage_column[1]
-    used_disk = disk_usage_column[2]
-    available_disk = disk_usage_column[3]
-    use_percentage_disk = disk_usage_column[4]
+    total_disk = float(re.sub("[A-Za-z]", "",disk_usage_column[1]))
+    used_disk = float(re.sub("[A-Za-z]", "", disk_usage_column[2]))
+    available_disk = float(re.sub("[A-Za-z]", "", disk_usage_column[3]))
+    use_percentage_disk = float(disk_usage_column[4].replace("%", ""))
     disk_usage = {
         "filesystem_disk": filesystem_disk,
         "total_disk": total_disk,
@@ -114,19 +129,22 @@ def get_top_snapshot():
 
     # ['top', '-', '12:04:32', 'up', '1', 'day,', '2:37,', '2', 'users,', 'load', 'average:', '0.04,', '0.04,', '0.06']
     load_average_columns = top_snapshot_lines[0].split()
-    one_minute_load_average = load_average_columns[11].replace(",", "")
-    five_minute_load_average = load_average_columns[12].replace(",", "")
-    fifteen_minute_load_average = load_average_columns[13].replace(",", "")
+    one_minute_load_average = float(load_average_columns[11].replace(",", ""))
+    five_minute_load_average = float(load_average_columns[12].replace(",", ""))
+    fifteen_minute_load_average = float(load_average_columns[13].replace(",", ""))
 
     # ['Tasks:', '100', 'total,', '1', 'running,', '99', 'sleeping,', '0', 'stopped,', '0', 'zombie']
     tasks_columns = top_snapshot_lines[1].split()
-    task_running = tasks_columns[3]
-    task_zombie = tasks_columns[9]
+    task_running = int(tasks_columns[3])
+    task_zombie = int(tasks_columns[9])
 
     # ['%Cpu(s):', '0.6', 'us,', '0.0', 'sy,', '0.0', 'ni,', '99.4', 'id,', '0.0', 'wa,', '0.0', 'hi,', '0.0', 'si,', '0.0', 'st']
     cpu_columns = top_snapshot_lines[2].split()
-    cpu_system = cpu_columns[3]
-    cpu_idle = cpu_columns[7]
+    cpu_idle_index = cpu_columns.index("id,") - 1
+    cpu_idle = float(re.sub("[^0-9.]", "", cpu_columns[cpu_idle_index]))
+
+    cpu_system_index = cpu_columns.index("sy,") - 1
+    cpu_system = float(re.sub("[^0-9.]", "", cpu_columns[cpu_system_index]))
 
     top_snapshot = {
         "Load Average": {
@@ -197,3 +215,222 @@ def get_networking_snapshot():
     }
 
     return networking
+
+
+def diagnose(current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot):    
+    # Diagnose processes
+    critical_processes = []
+    watch_processes = []
+    healthy_processes = []
+    for process in current_processes:
+        if process["health"] == "Critical":
+            critical_processes.append(process)
+        elif process["health"] == "Watch":
+            watch_processes.append(process)
+        else:
+            healthy_processes.append(process)
+
+
+    # Diagnose RAM memory
+    ram_memory_health = ""
+    ram_used_memory = current_memory_usage["RAM"]["ram_used_memory"]
+    ram_total_memory = current_memory_usage["RAM"]["ram_total_memory"]
+    ram_percentage_memory = (ram_used_memory / ram_total_memory) * 100
+    if ram_percentage_memory <= 60.0:
+        ram_memory_health = "Healthy"
+    elif ram_percentage_memory > 60.0 and ram_percentage_memory < 85.0:
+        ram_memory_health = "Watch"
+    else:
+        ram_memory_health = "Critical"
+
+
+    # Diagnose SWAP memory
+    swap_memory_health = ""
+    swap_used_memory = current_memory_usage["Swap"]["swap_used_memory"]
+    swap_total_memory = current_memory_usage["Swap"]["swap_total_memory"]
+    if swap_total_memory == 0:
+        swap_memory_health = "Healthy"
+    else:
+        swap_percentage_memory = (swap_used_memory / swap_total_memory) * 100
+        if swap_percentage_memory <= 60.0:
+            swap_memory_health = "Healthy"
+        elif swap_percentage_memory > 60.0 and swap_percentage_memory < 85.0:
+            swap_memory_health = "Watch"
+        else:
+            swap_memory_health = "Critical"
+
+
+    # Diagnose Disk storage
+    disk_health = ""
+    use_percentage_disk = current_storage_usage["use_percentage_disk"]
+    if use_percentage_disk <= 70.0:
+        disk_health = "Healthy"
+    elif use_percentage_disk > 70 and use_percentage_disk < 90:
+        disk_health = "Watch"
+    else:
+        disk_health = "Critical"
+
+
+    # Diagnose Top snapshot
+    load_average_health = ""
+    one_minute_load_average = current_top_snapshot["Load Average"]["one_minute_load_average"]
+    if one_minute_load_average <= 0.7:
+        load_average_health = "Healthy"
+    elif one_minute_load_average > 0.7 and one_minute_load_average < 1.0:
+        load_average_health = "Watch"
+    else:
+        load_average_health = "Critical"
+
+    cpu_idle_health = ""
+    cpu_idle = current_top_snapshot["CPU%"]["cpu_idle"]
+    if cpu_idle >= 80.0:
+        cpu_idle_health = "Healthy"
+    elif cpu_idle < 80.0 and cpu_idle > 50.0:
+        cpu_idle_health = "Watch"
+    else:
+        cpu_idle_health = "Critical"
+
+    cpu_system_health = ""
+    cpu_system = current_top_snapshot["CPU%"]["cpu_system"]
+    if cpu_system <= 10.0:
+        cpu_system_health = "Healthy"
+    elif cpu_system > 10.0 and cpu_system < 20.0:
+        cpu_system_health = "Watch"
+    else:
+        cpu_system_health = "Critical"
+    
+    running_tasks_health = ""
+    task_running = current_top_snapshot["Tasks"]["task_running"]
+    if task_running == 1 or task_running == 2:
+        running_tasks_health = "Healthy"
+    elif task_running >= 3 and task_running <= 5:
+        running_tasks_health = "Watch"
+    else:
+        running_tasks_health = "Critical"
+
+    zombie_tasks_health = ""
+    task_zombie = current_top_snapshot["Tasks"]["task_zombie"]
+    if task_zombie == 0:
+        zombie_tasks_health = "Healthy"
+    elif task_zombie == 1 or task_zombie == 2:
+        zombie_tasks_health = "Watch"
+    else:
+        zombie_tasks_health = "Critical"
+
+
+    # Diagnose network
+    network_health = ""
+    listening_external = current_networking_snapshot["Listening on external interface"]
+    if len(listening_external) > 0:
+        network_health = "Critical"
+    else:
+        network_health = "Healthy"
+
+    return {
+        "Processes": {
+            "healthy_processes": healthy_processes,
+            "critical_processes": critical_processes,
+            "watch_processes": watch_processes
+        },
+        "Memory": {
+            "ram_memory_health": ram_memory_health,
+            "swap_memory_health": swap_memory_health
+        },
+        "Storage": {
+            "disk_health": disk_health
+        },
+        "CPU": {
+            "load_average_health": load_average_health,
+            "cpu_idle_health": cpu_idle_health,
+            "cpu_system_health": cpu_system_health,
+            "running_tasks_health": running_tasks_health,
+            "zombie_tasks_health": zombie_tasks_health
+        },
+        "Network": {
+            "network_health": network_health
+        }
+    }
+
+def print_summary(diagnostic):
+    print("=" * 40)
+    print("       SYSTEM HEALTH SUMMARY")
+    print("=" * 40)
+
+    # Processes
+    print("\n[ Processes ]")
+    critical = diagnostic["Processes"]["critical_processes"]
+    watch = diagnostic["Processes"]["watch_processes"]
+    if len(critical) > 0:
+        print(f"  Status: Critical — {len(critical)} process(es) consuming high CPU")
+    elif len(watch) > 0:
+        print(f"  Status: Watch — {len(watch)} process(es) consuming moderate CPU")
+    else:
+        print("  Status: Healthy")
+
+    # Memory
+    print("\n[ Memory ]")
+    print(f"  RAM:  {diagnostic['Memory']['ram_memory_health']}")
+    print(f"  Swap: {diagnostic['Memory']['swap_memory_health']}")
+
+    # Storage
+    print("\n[ Storage ]")
+    print(f"  Disk: {diagnostic['Storage']['disk_health']}")
+
+    # CPU
+    print("\n[ CPU ]")
+    print(f"  Load Average:  {diagnostic['CPU']['load_average_health']}")
+    print(f"  CPU Idle:      {diagnostic['CPU']['cpu_idle_health']}")
+    print(f"  CPU System:    {diagnostic['CPU']['cpu_system_health']}")
+    print(f"  Running Tasks: {diagnostic['CPU']['running_tasks_health']}")
+    print(f"  Zombie Tasks:  {diagnostic['CPU']['zombie_tasks_health']}")
+
+    # Network
+    print("\n[ Network ]")
+    print(f"  External Exposure: {diagnostic['Network']['network_health']}")
+
+    print("\n" + "=" * 40)
+
+
+def print_detailed(current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot):
+    print("=" * 40)
+    print("       DETAILED SYSTEM REPORT")
+    print("=" * 40)
+
+    # Processes
+    print("\n[ Top Processes by CPU Usage ]")
+    print(f"  {'USER':<12} {'PID':<8} {'CPU%':<8} {'MEM%':<8} {'HEALTH':<10} COMMAND")
+    print("  " + "-" * 70)
+    for process in current_processes:
+        print(f"  {process['user']:<12} {process['pid']:<8} {process['cpu_percentage']:<8} {process['memory_percentage']:<8} {process['health']:<10} {process['process_running']}")
+
+    # Memory
+    print("\n[ Memory Usage ]")
+    ram = current_memory_usage["RAM"]
+    swap = current_memory_usage["Swap"]
+    print(f"  RAM  | Total: {ram['ram_total_memory']}Gi | Used: {ram['ram_used_memory']}Gi | Free: {ram['ram_free_memory']}Gi")
+    print(f"  Swap | Total: {swap['swap_total_memory']}Gi | Used: {swap['swap_used_memory']}Gi | Free: {swap['swap_free_memory']}Gi")
+
+    # Storage
+    print("\n[ Storage Usage ]")
+    print(f"  Filesystem: {current_storage_usage['filesystem_disk']}")
+    print(f"  Total: {current_storage_usage['total_disk']}G | Used: {current_storage_usage['used_disk']}G | Available: {current_storage_usage['available_disk']}G | Use%: {current_storage_usage['use_percentage_disk']}%")
+
+    # Top snapshot
+    print("\n[ CPU Snapshot ]")
+    load = current_top_snapshot["Load Average"]
+    tasks = current_top_snapshot["Tasks"]
+    cpu = current_top_snapshot["CPU%"]
+    print(f"  Load Average  | 1min: {load['one_minute_load_average']} | 5min: {load['five_minute_load_average']} | 15min: {load['fifteen_minute_load_average']}")
+    print(f"  Tasks         | Running: {tasks['task_running']} | Zombie: {tasks['task_zombie']}")
+    print(f"  CPU           | Idle: {cpu['cpu_idle']}% | System: {cpu['cpu_system']}%")
+
+    # Networking
+    print("\n[ Network ]")
+    tcp = sorted(current_networking_snapshot["TCP Addresses"])
+    udp = sorted(current_networking_snapshot["UDP Addresses"])
+    external = current_networking_snapshot["Listening on external interface"]
+    print(f"  TCP Listeners: {', '.join(tcp) if tcp else 'None'}")
+    print(f"  UDP Listeners: {', '.join(udp) if udp else 'None'}")
+    print(f"  External Exposure: {'⚠ ' + ', '.join(external) if external else 'None detected'}")
+
+    print("\n" + "=" * 40)
