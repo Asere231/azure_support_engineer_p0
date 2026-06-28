@@ -1,5 +1,6 @@
 import subprocess
 import re
+import history
 
 """
 ps -> current processes running
@@ -26,6 +27,7 @@ def run_local_diagnostic():
     print_summary(diagnostic)
     print_detailed(current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot)
 
+    history.save_report(diagnostic, current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot)
     
 
 def get_current_processes():
