@@ -101,8 +101,23 @@ def get_storage_usage():
     # Filesystem      Size  Used Avail Use% Mounted on
     # /dev/sdf       1007G  3.1G  953G   1% /
     current_disk_usage = subprocess.run(["df", "-h"], capture_output=True, text=True)
-    disk_usage_line = current_disk_usage.stdout.splitlines()
-    disk_usage_column = disk_usage_line[1].split()
+    disk_usage_lines = current_disk_usage.stdout.splitlines()
+    
+    disk_usage_column = None
+    for line in disk_usage_lines:
+        if line.startswith("/dev/"):
+            disk_usage_column = line.split()
+            break
+
+    if disk_usage_column is None:
+        return {
+            "filesystem_disk": "unknown",
+            "total_disk": 0.0,
+            "used_disk": 0.0,
+            "available_disk": 0.0,
+            "use_percentage_disk": 0.0
+        }
+
     filesystem_disk = disk_usage_column[0]
     total_disk = float(re.sub("[A-Za-z]", "",disk_usage_column[1]))
     used_disk = float(re.sub("[A-Za-z]", "", disk_usage_column[2]))

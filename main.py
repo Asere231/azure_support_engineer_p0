@@ -2,8 +2,6 @@ import history
 import diagnostics
 import azure_cli
 
-
-
 def interactive_cli():
     while True:
         print("=" * 30)
@@ -20,7 +18,7 @@ def interactive_cli():
             case "1": 
                 diagnostics.run_local_diagnostic()
             case "2":
-                azure_cli.deploy_vm()
+                azure_cli.create_vm_and_deploy()
             case "3":
                 azure_cli.run_teardown()
             case "4":

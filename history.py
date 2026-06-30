@@ -5,11 +5,8 @@ from datetime import datetime
 
 HISTORY_FILE = "performance_history.json"
 
-report_id = 0
 
 def save_report(diagnostic, current_processes, current_memory_usage, current_storage_usage, current_top_snapshot, current_networking_snapshot):
-    global report_id
-    report_id += 1
     timestamp = datetime.fromtimestamp(time.time()).isoformat()
 
     # Flatten processes
@@ -26,6 +23,16 @@ def save_report(diagnostic, current_processes, current_memory_usage, current_sto
     tcp = ", ".join(sorted(current_networking_snapshot["TCP Addresses"]))
     udp = ", ".join(sorted(current_networking_snapshot["UDP Addresses"]))
     external = ", ".join(sorted(current_networking_snapshot["Listening on external interface"]))
+
+    # Load existing history or start fresh
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as file:
+            content = file.read().strip()
+            if content:
+                history = json.loads(content)
+
+    report_id = len(history) + 1
 
     record = {
         "report_id": report_id,
@@ -69,12 +76,6 @@ def save_report(diagnostic, current_processes, current_memory_usage, current_sto
         "external_listeners": external
     }
 
-    # Load existing history or start fresh
-    history = []
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as file:
-            history = json.load(file)
-
     history.append(record)
 
     with open(HISTORY_FILE, "w") as file:
@@ -88,7 +89,11 @@ def view_history():
 
     history = []
     with open(HISTORY_FILE, "r") as file:
-        history = json.load(file)
+        content = file.read().strip()
+        if not content:
+            print("History is empty")
+            return
+        history = json.loads(content)
 
     if not history:
         print("History is empty")
